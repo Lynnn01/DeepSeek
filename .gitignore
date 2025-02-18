@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+ENV/
+
+# Models
+models/
+*.pth
+*.bin
+*.model
+*.ckpt
+*.pt
+*.safetensors
+
+# Large files
+*.gz
+*.tar
+*.zip
+*.7z
+*.lfs.*
+
+# Evaluation
+Evaluation/MBPP/eval_instruct.sh
+Evaluation/LeetCode/output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.vs/
+
+# OS
+.DS_Store
+Thumbs.db

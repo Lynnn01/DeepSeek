@@ -1,0 +1,1 @@
+python inference.py --model_path ./models/deepseek-coder-6.7b-base --max_length 2048 --temperature 0.7
