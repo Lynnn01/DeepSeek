@@ -6,87 +6,69 @@ from deepseek_model import DeepSeekAssistant
 class DeepSeekUI:
     def __init__(self):
         self.assistant = DeepSeekAssistant()
+        self.current_mode = "balanced"
         self.css = """
-        .container {
-            max-width: 850px;
-            margin: auto;
-            padding: 20px;
-        }
-        .chat-message {
-            padding: 15px;
-            border-radius: 15px;
-            margin: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .user-message {
-            background-color: #e3f2fd;
-            text-align: right;
-            margin-left: 20%;
-        }
-        .bot-message {
-            background-color: #f5f5f5;
-            margin-right: 20%;
-        }
-        .header {
-            text-align: center;
-            padding: 25px;
-            background: linear-gradient(135deg, #2196F3, #1976D2);
-            color: white;
-            border-radius: 15px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        .mode-info {
-            margin-top: 10px;
-            padding: 10px;
-            border-radius: 8px;
-            background-color: rgba(255,255,255,0.1);
-        }
-        .examples {
-            background-color: #fff;
-            padding: 15px;
-            border-radius: 10px;
-            margin-top: 20px;
-            border: 1px solid #e0e0e0;
-        }
-        .mode-description {
-            margin: 10px 0;
-            padding: 10px;
-            border-radius: 8px;
-            background-color: #f8f9fa;
-            border-left: 4px solid #2196F3;
-        }
+        .container { max-width: 850px; margin: auto; padding: 20px; }
+        .chat-message { padding: 15px; border-radius: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .user-message { background-color: #e3f2fd; text-align: right; margin-left: 20%; }
+        .bot-message { background-color: #f5f5f5; margin-right: 20%; }
+        .header { text-align: center; padding: 25px; background: linear-gradient(135deg, #2196F3, #1976D2);
+                 color: white; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .mode-info { margin-top: 10px; padding: 10px; border-radius: 8px; background-color: rgba(255,255,255,0.1); }
+        .examples { background-color: #fff; padding: 15px; border-radius: 10px; margin-top: 20px; border: 1px solid #e0e0e0; }
+        .mode-description { margin: 10px 0; padding: 10px; border-radius: 8px; background-color: #f8f9fa; 
+                          border-left: 4px solid #2196F3; }
+        .mode-status { text-align: center; padding: 8px; margin: 10px 0; border-radius: 4px;
+                      background-color: #e8f5e9; color: #2e7d32; font-weight: 500; }
         """
 
     def user_message(self, message, history):
+        """Format and add user message to chat"""
         if message.strip() == "":
             return "", history
-        history = history + [[message, None]]
+
+        history.append({"role": "user", "content": message})
         return "", history
 
     def bot_message(self, history):
-        if len(history) == 0 or history[-1][1] is not None:
+        """Generate and format bot response"""
+        if not history or history[-1]["role"] != "user":
             return history
-        message = history[-1][0]
+
+        message = history[-1]["content"]
         response = self.assistant.generate_response(message, history)
-        history[-1][1] = response
+
+        history.append({"role": "assistant", "content": response})
         return history
 
     def clear_chat(self):
+        """Clear chat history"""
         self.assistant.clear_context()
-        return None
+        return []
 
-    def change_mode(self, mode, history):
-        """
-        Change AI mode and update interface
-        """
-        self.assistant.change_mode(mode)
-        return history
+    def update_mode_and_ui(self, new_mode, chatbot):
+        """Update mode and UI elements"""
+        try:
+            if new_mode != self.current_mode:
+                self.assistant.change_mode(new_mode)
+                self.current_mode = new_mode
+
+            mode_names = {"fast": "เร็ว", "balanced": "สมดุล", "smart": "ฉลาด"}
+            status = f"✓ เปลี่ยนเป็นโหมด{mode_names.get(new_mode, new_mode)}แล้ว"
+
+            return (
+                self.get_mode_description(new_mode),
+                status,
+                chatbot if chatbot else [],
+            )
+        except Exception as e:
+            return (
+                self.get_mode_description(self.current_mode),
+                f"❌ เกิดข้อผิดพลาด: {str(e)}",
+                chatbot if chatbot else [],
+            )
 
     def get_mode_description(self, mode):
-        """
-        Get description for selected mode
-        """
         descriptions = {
             "fast": """🚀 โหมดเร็ว (Fast Mode)
             • ตอบสนองรวดเร็ว ตอบสั้นกระชับ
@@ -105,7 +87,6 @@ class DeepSeekUI:
 
     def create_interface(self):
         with gr.Blocks(css=self.css, theme=gr.themes.Soft()) as interface:
-            # Header
             gr.Markdown(
                 """
                 <div class="header">
@@ -115,7 +96,6 @@ class DeepSeekUI:
                 """
             )
 
-            # Mode selector and description
             with gr.Row():
                 with gr.Column(scale=1):
                     mode_selector = gr.Radio(
@@ -130,7 +110,10 @@ class DeepSeekUI:
                         elem_classes=["mode-description"],
                     )
 
-            # Chat interface
+            status_msg = gr.Markdown(
+                value="✓ เริ่มต้นในโหมดสมดุล", elem_classes=["mode-status"]
+            )
+
             with gr.Row():
                 with gr.Column(scale=4):
                     chatbot = gr.Chatbot(
@@ -139,9 +122,10 @@ class DeepSeekUI:
                         layout="bubble",
                         bubble_full_width=False,
                         container=True,
+                        type="messages",
+                        value=[],
                     )
 
-            # Input area
             with gr.Row():
                 msg = gr.Textbox(
                     show_label=False,
@@ -151,12 +135,10 @@ class DeepSeekUI:
                 )
                 submit = gr.Button("ส่ง", variant="primary", scale=1)
 
-            # Control buttons
             with gr.Row():
                 clear = gr.Button("ล้างการสนทนา", variant="secondary")
                 retry = gr.Button("ลองใหม่", variant="secondary")
 
-            # Example questions
             gr.Examples(
                 examples=[
                     "ช่วยเขียนโค้ด Python สำหรับการจัดการไฟล์ Excel",
@@ -170,11 +152,9 @@ class DeepSeekUI:
 
             # Event handlers
             mode_selector.change(
-                fn=lambda x: self.get_mode_description(x),
-                inputs=[mode_selector],
-                outputs=[mode_info],
-            ).then(
-                fn=self.change_mode, inputs=[mode_selector, chatbot], outputs=[chatbot]
+                fn=self.update_mode_and_ui,
+                inputs=[mode_selector, chatbot],
+                outputs=[mode_info, status_msg, chatbot],
             )
 
             submit.click(
