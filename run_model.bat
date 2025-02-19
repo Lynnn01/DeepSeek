@@ -1,1 +1,0 @@
-python inference.py --model_path ./models/deepseek-coder-6.7b-base --max_new_tokens 128
