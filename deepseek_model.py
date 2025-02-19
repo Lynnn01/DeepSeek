@@ -92,10 +92,27 @@ class DeepSeekAssistant:
             response = response.split("Assistant:")[-1].strip()
             print(f"AI response: {response}")
 
+            # แก้ไขการตรวจจับและแปลภาษา
             detected_lang = self.detect_language(response)
-            if detected_lang == "zh-CN":
-                response = self.translate_text(response, "th")
-                print(f"Translated response: {response}")
+            print(f"Detected language: {detected_lang}")
+
+            # ถ้าไม่ใช่ภาษาไทยหรืออังกฤษ ให้แปลเป็นไทย
+            if detected_lang not in ["th", "en"]:
+                try:
+                    # พยายามแปลเป็นไทยโดยตรง
+                    translated = self.translate_text(response, "th")
+                    if translated and translated.strip():
+                        response = translated
+                        print(f"Translated to Thai: {response}")
+                    else:
+                        # ถ้าแปลเป็นไทยโดยตรงไม่ได้ ให้แปลผ่านอังกฤษก่อน
+                        english = self.translate_text(response, "en")
+                        if english and english.strip():
+                            response = self.translate_text(english, "th")
+                            print(f"Translated via English: {response}")
+                except Exception as e:
+                    print(f"Translation error: {str(e)}")
+                    # ถ้าแปลไม่ได้ ให้ใช้ response เดิม
 
             if len(self.context_window) >= self.config.MAX_CONTEXT_LENGTH:
                 self.context_window.pop(0)
@@ -108,17 +125,42 @@ class DeepSeekAssistant:
             return f"ขออภัย เกิดข้อผิดพลาด: {str(e)}"
 
     def detect_language(self, text):
+        """ปรับปรุงการตรวจจับภาษา"""
         try:
+            # ตัดช่องว่างและตัวอักษรพิเศษออกก่อนตรวจสอบ
+            text = " ".join(text.split())
+            if not text:
+                return "en"
+
+            # ถ้ามีตัวอักษรไทย ให้ถือว่าเป็นภาษาไทย
+            if any("\u0E00" <= c <= "\u0E7F" for c in text):
+                return "th"
+
             return langdetect.detect(text)
         except:
             return "en"
 
     def translate_text(self, text, target_language):
+        """ปรับปรุงการแปลภาษา"""
         try:
-            if not text.strip():
+            if not text or not text.strip():
                 return text
+
+            # ทำความสะอาดข้อความก่อนแปล
+            text = " ".join(text.split())
+
+            # ถ้าภาษาเป้าหมายเป็นไทยและข้อความมีตัวอักษรไทยอยู่แล้ว ไม่ต้องแปล
+            if target_language == "th" and any("\u0E00" <= c <= "\u0E7F" for c in text):
+                return text
+
             translator = GoogleTranslator(source="auto", target=target_language)
-            return translator.translate(text)
+            translated = translator.translate(text)
+
+            # ตรวจสอบว่าการแปลสำเร็จ
+            if translated and translated.strip():
+                return translated
+            return text
+
         except Exception as e:
             print(f"Translation error: {str(e)}")
             return text
