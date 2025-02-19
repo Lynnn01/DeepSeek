@@ -1,76 +1,9 @@
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-import gradio as gr
+import gradio as gr # type: ignore
 import time
+from deepseek_model import DeepSeekAssistant
 
-
-class DeepSeekChat:
-    def __init__(self):
-        self.model = None
-        self.tokenizer = None
-        self.load_model()
-
-    def load_model(self):
-        print("กำลังโหลดโมเดล...")
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-        )
-
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            "deepseek-ai/deepseek-coder-6.7b-base", use_fast=True, legacy=False
-        )
-
-        device_map = {
-            "model.embed_tokens": "cuda:0",
-            "model.layers": "cuda:0",
-            "model.norm": "cuda:0",
-            "lm_head": "cuda:0",
-        }
-
-        self.model = AutoModelForCausalLM.from_pretrained(
-            "deepseek-ai/deepseek-coder-6.7b-base",
-            quantization_config=quantization_config,
-            torch_dtype=torch.float16,
-            device_map=device_map,
-            max_memory={"cuda:0": "3GB"},
-            low_cpu_mem_usage=True,
-        )
-
-        self.model.eval()
-        print("โหลดโมเดลเสร็จแล้ว!")
-
-    def generate_response(self, message, history):
-        prompt = f"You are a helpful AI assistant. Please respond in Thai.\nQuestion: {message}\nAnswer in Thai: "
-
-        inputs = self.tokenizer(
-            prompt, return_tensors="pt", truncation=True, max_length=256, padding=True
-        ).to("cuda:0")
-
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=64,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.95,
-                top_k=50,
-                num_beams=1,
-                pad_token_id=self.tokenizer.eos_token_id,
-                repetition_penalty=1.2,
-                length_penalty=1.0,
-            )
-
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        response = response.split("Answer in Thai:")[-1].strip()
-        time.sleep(0.5)
-        return response
-
-
-# สร้างอินสแตนซ์ของ DeepSeek
-assistant = DeepSeekChat()
+# สร้างอินสแตนซ์ของ AI
+assistant = DeepSeekAssistant()
 
 
 def user_message(message, history):
@@ -92,30 +25,69 @@ def bot_message(history):
     return history
 
 
+def clear_chat():
+    assistant.clear_context()
+    return None
+
+
 css = """
-.container {max-width: 800px; margin: auto; padding: 20px;}
-.chat-message {padding: 15px; border-radius: 10px; margin: 5px;}
-.user-message {background-color: #e3f2fd; text-align: right;}
-.bot-message {background-color: #f5f5f5;}
-.header {text-align: center; padding: 20px; background: #2196F3; color: white; border-radius: 10px;}
+.container {
+    max-width: 850px;
+    margin: auto;
+    padding: 20px;
+}
+.chat-message {
+    padding: 15px;
+    border-radius: 15px;
+    margin: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.user-message {
+    background-color: #e3f2fd;
+    text-align: right;
+    margin-left: 20%;
+}
+.bot-message {
+    background-color: #f5f5f5;
+    margin-right: 20%;
+}
+.header {
+    text-align: center;
+    padding: 25px;
+    background: linear-gradient(135deg, #2196F3, #1976D2);
+    color: white;
+    border-radius: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.examples {
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 20px;
+    border: 1px solid #e0e0e0;
+}
 """
 
-with gr.Blocks(css=css) as interface:
+with gr.Blocks(css=css, theme=gr.themes.Soft()) as interface:
     gr.Markdown(
         """
         <div class="header">
-            <h1>🤖 DeepSeek Chat Assistant</h1>
-            <p>AI ผู้ช่วยอัจฉริยะ พร้อมตอบทุกคำถามของคุณ</p>
+            <h1>🤖 DeepSeek AI Assistant</h1>
+            <p>ผู้ช่วย AI อัจฉริยะ พร้อมตอบทุกคำถามของคุณ</p>
         </div>
         """
     )
 
-    chatbot = gr.Chatbot(
-        height=500,
-        show_label=False,
-        layout="bubble",
-        bubble_full_width=False,
-    )
+    with gr.Row():
+        with gr.Column(scale=4):
+            chatbot = gr.Chatbot(
+                height=600,
+                show_label=False,
+                layout="bubble",
+                bubble_full_width=False,
+                container=True,
+            )
 
     with gr.Row():
         msg = gr.Textbox(
@@ -124,7 +96,7 @@ with gr.Blocks(css=css) as interface:
             container=False,
             scale=8,
         )
-        submit = gr.Button("ส่ง", variant="primary", scale=1, min_width=100)
+        submit = gr.Button("ส่ง", variant="primary", scale=1)
 
     with gr.Row():
         clear = gr.Button("ล้างการสนทนา", variant="secondary")
@@ -132,14 +104,16 @@ with gr.Blocks(css=css) as interface:
 
     gr.Examples(
         examples=[
-            "ช่วยอธิบายเรื่อง Artificial Intelligence",
-            "เขียนโค้ด Python สำหรับการคำนวณเลขคณิต",
-            "แนะนำวิธีการเรียนรู้การเขียนโปรแกรม",
+            "ช่วยเขียนโค้ด Python สำหรับการจัดการไฟล์ Excel",
+            "อธิบายหลักการทำงานของ Machine Learning แบบเข้าใจง่าย",
+            "วิธีการออกแบบ Database ที่ดีควรทำอย่างไร",
+            "อธิบายวิธีการทำ Data Visualization ด้วย Python",
         ],
         inputs=msg,
         label="ตัวอย่างคำถาม",
     )
 
+    # Event handlers
     submit.click(user_message, [msg, chatbot], [msg, chatbot], queue=False).then(
         bot_message, chatbot, chatbot
     )
@@ -148,8 +122,8 @@ with gr.Blocks(css=css) as interface:
         bot_message, chatbot, chatbot
     )
 
-    clear.click(lambda: None, None, chatbot, queue=False)
+    clear.click(clear_chat, None, chatbot, queue=False)
     retry.click(bot_message, chatbot, chatbot)
 
 if __name__ == "__main__":
-    interface.launch(server_name="0.0.0.0", server_port=3000, share=True, debug=True)
+    interface.launch(server_name="127.0.0.1", server_port=3000, share=False)
